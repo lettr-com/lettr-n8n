@@ -11,12 +11,15 @@
 	"license": "MIT",
 	"homepage": "https://docs.lettr.com",
 	"author": {
-		"name": "Lettr",
+		"name": "lettr-com",
 		"email": "support@lettr.com"
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/lettrhq/n8n-nodes-lettr.git"
+		"url": "https://github.com/lettr-com/lettr-n8n.git"
+	},
+	"bugs": {
+		"url": "https://github.com/lettr-com/lettr-n8n/issues"
 	},
 	"engines": {
 		"node": ">=20.15"

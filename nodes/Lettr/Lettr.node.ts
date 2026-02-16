@@ -78,12 +78,10 @@ async function lettrApiRequest(
 	}
 
 	try {
-		return (await this.helpers.requestWithAuthentication.call(
+		return (await this.helpers.httpRequestWithAuthentication.call(
 			this,
 			'lettrApi',
 			options,
-			undefined,
-			itemIndex,
 		)) as IDataObject;
 	} catch (error) {
 		throw new NodeApiError(this.getNode(), error as JsonObject, { itemIndex });

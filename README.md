@@ -2,6 +2,18 @@
 
 This package provides a verified-style n8n community node for [Lettr](https://docs.lettr.com).
 
+## Logo
+
+- Source logo file (edit this): `assets/logo.svg`
+- n8n node icon file (auto-generated from source on build): `nodes/Lettr/lettr.svg`
+
+To apply your custom SVG logo:
+
+```bash
+npm run sync:logo
+npm run build
+```
+
 ## Supported resources and operations
 
 - **Email**

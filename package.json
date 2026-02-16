@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-lettr",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "n8n community node for Lettr transactional email APIs",
 	"keywords": [
 		"n8n-community-node-package",
@@ -26,7 +26,8 @@
 	},
 	"main": "index.js",
 	"scripts": {
-		"build": "npx rimraf dist && tsc && gulp build:icons",
+		"sync:logo": "cp assets/logo.svg nodes/Lettr/lettr.svg",
+		"build": "npm run sync:logo && npx rimraf dist && tsc && gulp build:icons",
 		"dev": "tsc --watch",
 		"format": "prettier nodes credentials --write",
 		"lint": "eslint --ext .ts nodes credentials",

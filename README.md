@@ -19,7 +19,6 @@ npm run build
 - **Email**
   - Send
   - Get
-  - Get Many
 - **Domain**
   - Get Many
 - **Template**
@@ -60,7 +59,6 @@ Then restart n8n.
 
 - [Lettr API introduction](https://docs.lettr.com/api-reference/introduction)
 - [Send email](https://docs.lettr.com/api-reference/emails/send-email)
-- [List email requests](https://docs.lettr.com/api-reference/emails/get-email-requests)
 - [Get email request](https://docs.lettr.com/api-reference/emails/get-email-request-details)
 - [List domains](https://docs.lettr.com/api-reference/domains/get-sending-domains)
 - [List templates](https://docs.lettr.com/api-reference/templates/get-all-email-templates)

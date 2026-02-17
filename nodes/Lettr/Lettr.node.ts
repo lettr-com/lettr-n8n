@@ -128,6 +128,7 @@ export class Lettr implements INodeType {
 		icon: 'file:lettr.svg',
 		group: ['output'],
 		version: 1,
+		usableAsTool: true,
 		documentationUrl: 'https://docs.lettr.com/api-reference/introduction',
 		subtitle: '={{$parameter["resource"] + ": " + $parameter["operation"]}}',
 		description: 'Interact with Lettr transactional email APIs',
@@ -185,12 +186,6 @@ export class Lettr implements INodeType {
 						value: 'get',
 						description: 'Get an email request by ID',
 						action: 'Get an email request',
-					},
-					{
-						name: 'Get Many',
-						value: 'getAll',
-						description: 'Get many email requests',
-						action: 'Get many email requests',
 					},
 					{
 						name: 'Send',

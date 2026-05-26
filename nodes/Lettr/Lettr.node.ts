@@ -37,6 +37,16 @@ function parseOptionalJson(
 	}
 }
 
+function collectProperties(ui: IDataObject): IDataObject {
+	const rows = (ui.property as IDataObject[] | undefined) ?? [];
+	const result: IDataObject = {};
+	for (const row of rows) {
+		const name = ((row.name as string) ?? '').trim();
+		if (name) result[name] = row.value ?? '';
+	}
+	return result;
+}
+
 function getResponseData(response: IDataObject): IDataObject {
 	return (response.data as IDataObject) ?? {};
 }
@@ -111,6 +121,58 @@ async function lettrApiRequest(
 			message: detail || err?.message || 'Lettr API request failed',
 		});
 	}
+}
+
+async function paginatedGetMany(
+	this: IExecuteFunctions,
+	endpoint: string,
+	dataKey: string,
+	itemIndex: number,
+	queryBase: IDataObject,
+	returnAll: boolean,
+	limit: number,
+	simplify: boolean,
+	startingPage: number,
+): Promise<INodeExecutionData[]> {
+	const out: INodeExecutionData[] = [];
+
+	if (!returnAll) {
+		const qs: IDataObject = { ...queryBase, per_page: limit, page: startingPage };
+		const response = await lettrApiRequest.call(this, 'GET', endpoint, itemIndex, {}, qs);
+
+		if (!simplify) {
+			out.push({ json: response, pairedItem: itemIndex });
+		} else {
+			for (const entry of getResponseList(response, dataKey)) {
+				out.push({ json: entry, pairedItem: itemIndex });
+			}
+		}
+		return out;
+	}
+
+	const entries: IDataObject[] = [];
+	let page = Math.max(1, startingPage);
+	let hasMore = true;
+
+	while (hasMore) {
+		const qs: IDataObject = { ...queryBase, per_page: 100, page };
+		const response = await lettrApiRequest.call(this, 'GET', endpoint, itemIndex, {}, qs);
+		entries.push(...getResponseList(response, dataKey));
+		const pagination = getPagination(response);
+		const currentPage = Number(pagination.current_page ?? page);
+		const lastPage = Number(pagination.last_page ?? currentPage);
+		hasMore = currentPage < lastPage;
+		page = currentPage + 1;
+	}
+
+	if (!simplify) {
+		out.push({ json: { data: { [dataKey]: entries } }, pairedItem: itemIndex });
+	} else {
+		for (const entry of entries) {
+			out.push({ json: entry, pairedItem: itemIndex });
+		}
+	}
+	return out;
 }
 
 const webhookEventOptions = [
@@ -220,6 +282,26 @@ export class Lettr implements INodeType {
 					{
 						name: 'Webhook',
 						value: 'webhook',
+					},
+					{
+						name: 'Audience Contact',
+						value: 'audienceContact',
+					},
+					{
+						name: 'Audience List',
+						value: 'audienceList',
+					},
+					{
+						name: 'Audience Property',
+						value: 'audienceProperty',
+					},
+					{
+						name: 'Audience Segment',
+						value: 'audienceSegment',
+					},
+					{
+						name: 'Audience Topic',
+						value: 'audienceTopic',
 					},
 				],
 			},
@@ -414,6 +496,274 @@ export class Lettr implements INodeType {
 						value: 'update',
 						description: 'Update an existing webhook',
 						action: 'Update a webhook',
+					},
+				],
+			},
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				default: 'contactGetAll',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact'],
+					},
+				},
+				options: [
+					{
+						name: 'Attach to List',
+						value: 'contactAttachList',
+						description: 'Attach a contact to a list',
+						action: 'Attach a contact to a list',
+					},
+					{
+						name: 'Bulk Attach to Lists',
+						value: 'contactBulkAttachLists',
+						description: 'Attach many contacts to many lists',
+						action: 'Bulk attach contacts to lists',
+					},
+					{
+						name: 'Bulk Detach From Lists',
+						value: 'contactBulkDetachLists',
+						description: 'Detach many contacts from many lists',
+						action: 'Bulk detach contacts from lists',
+					},
+					{
+						name: 'Create',
+						value: 'contactCreate',
+						description: 'Create a contact',
+						action: 'Create an audience contact',
+					},
+					{
+						name: 'Create Many',
+						value: 'contactCreateMany',
+						description: 'Create many contacts at once',
+						action: 'Create many audience contacts',
+					},
+					{
+						name: 'Delete',
+						value: 'contactDelete',
+						description: 'Delete a contact',
+						action: 'Delete an audience contact',
+					},
+					{
+						name: 'Detach From List',
+						value: 'contactDetachList',
+						description: 'Detach a contact from a list',
+						action: 'Detach a contact from a list',
+					},
+					{
+						name: 'Get',
+						value: 'contactGet',
+						description: 'Get a contact by ID',
+						action: 'Get an audience contact',
+					},
+					{
+						name: 'Get Many',
+						value: 'contactGetAll',
+						description: 'Get many contacts',
+						action: 'Get many audience contacts',
+					},
+					{
+						name: 'Subscribe to Topic',
+						value: 'contactSubscribeTopic',
+						description: 'Subscribe a contact to a topic',
+						action: 'Subscribe a contact to a topic',
+					},
+					{
+						name: 'Unsubscribe From Topic',
+						value: 'contactUnsubscribeTopic',
+						description: 'Unsubscribe a contact from a topic',
+						action: 'Unsubscribe a contact from a topic',
+					},
+					{
+						name: 'Update',
+						value: 'contactUpdate',
+						description: 'Update a contact',
+						action: 'Update an audience contact',
+					},
+				],
+			},
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				default: 'listGetAll',
+				displayOptions: {
+					show: {
+						resource: ['audienceList'],
+					},
+				},
+				options: [
+					{
+						name: 'Create',
+						value: 'listCreate',
+						description: 'Create an audience list',
+						action: 'Create an audience list',
+					},
+					{
+						name: 'Delete',
+						value: 'listDelete',
+						description: 'Delete an audience list',
+						action: 'Delete an audience list',
+					},
+					{
+						name: 'Delete Many',
+						value: 'listDeleteMany',
+						description: 'Delete many audience lists',
+						action: 'Delete many audience lists',
+					},
+					{
+						name: 'Get',
+						value: 'listGet',
+						description: 'Get an audience list by ID',
+						action: 'Get an audience list',
+					},
+					{
+						name: 'Get Many',
+						value: 'listGetAll',
+						description: 'Get many audience lists',
+						action: 'Get many audience lists',
+					},
+					{
+						name: 'Update',
+						value: 'listUpdate',
+						description: 'Update an audience list',
+						action: 'Update an audience list',
+					},
+				],
+			},
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				default: 'propertyGetAll',
+				displayOptions: {
+					show: {
+						resource: ['audienceProperty'],
+					},
+				},
+				options: [
+					{
+						name: 'Create',
+						value: 'propertyCreate',
+						description: 'Create a property',
+						action: 'Create an audience property',
+					},
+					{
+						name: 'Delete',
+						value: 'propertyDelete',
+						description: 'Delete a property',
+						action: 'Delete an audience property',
+					},
+					{
+						name: 'Get',
+						value: 'propertyGet',
+						description: 'Get a property by ID',
+						action: 'Get an audience property',
+					},
+					{
+						name: 'Get Many',
+						value: 'propertyGetAll',
+						description: 'Get many properties',
+						action: 'Get many audience properties',
+					},
+					{
+						name: 'Update',
+						value: 'propertyUpdate',
+						description: 'Update a property',
+						action: 'Update an audience property',
+					},
+				],
+			},
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				default: 'segmentGetAll',
+				displayOptions: {
+					show: {
+						resource: ['audienceSegment'],
+					},
+				},
+				options: [
+					{
+						name: 'Create',
+						value: 'segmentCreate',
+						description: 'Create a segment',
+						action: 'Create an audience segment',
+					},
+					{
+						name: 'Delete',
+						value: 'segmentDelete',
+						description: 'Delete a segment',
+						action: 'Delete an audience segment',
+					},
+					{
+						name: 'Get',
+						value: 'segmentGet',
+						description: 'Get a segment by ID',
+						action: 'Get an audience segment',
+					},
+					{
+						name: 'Get Many',
+						value: 'segmentGetAll',
+						description: 'Get many segments',
+						action: 'Get many audience segments',
+					},
+					{
+						name: 'Update',
+						value: 'segmentUpdate',
+						description: 'Update a segment',
+						action: 'Update an audience segment',
+					},
+				],
+			},
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				default: 'topicGetAll',
+				displayOptions: {
+					show: {
+						resource: ['audienceTopic'],
+					},
+				},
+				options: [
+					{
+						name: 'Create',
+						value: 'topicCreate',
+						description: 'Create a topic',
+						action: 'Create an audience topic',
+					},
+					{
+						name: 'Delete',
+						value: 'topicDelete',
+						description: 'Delete a topic',
+						action: 'Delete an audience topic',
+					},
+					{
+						name: 'Get',
+						value: 'topicGet',
+						description: 'Get a topic by ID',
+						action: 'Get an audience topic',
+					},
+					{
+						name: 'Get Many',
+						value: 'topicGetAll',
+						description: 'Get many topics',
+						action: 'Get many audience topics',
+					},
+					{
+						name: 'Update',
+						value: 'topicUpdate',
+						description: 'Update a topic',
+						action: 'Update an audience topic',
 					},
 				],
 			},
@@ -1461,6 +1811,676 @@ export class Lettr implements INodeType {
 					},
 				},
 			},
+			{
+				...listOperationProperties[0],
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: [
+							'listGetAll',
+							'contactGetAll',
+							'topicGetAll',
+							'propertyGetAll',
+							'segmentGetAll',
+						],
+					},
+				},
+			},
+			{
+				...listOperationProperties[1],
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: [
+							'listGetAll',
+							'contactGetAll',
+							'topicGetAll',
+							'propertyGetAll',
+							'segmentGetAll',
+						],
+						returnAll: [false],
+					},
+				},
+			},
+			{
+				...listOperationProperties[2],
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: [
+							'listGetAll',
+							'contactGetAll',
+							'topicGetAll',
+							'propertyGetAll',
+							'segmentGetAll',
+						],
+					},
+				},
+			},
+			{
+				displayName: 'Page',
+				name: 'audiencePage',
+				type: 'number',
+				typeOptions: {
+					minValue: 1,
+				},
+				default: 1,
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: [
+							'listGetAll',
+							'contactGetAll',
+							'topicGetAll',
+							'propertyGetAll',
+							'segmentGetAll',
+						],
+					},
+				},
+				description: 'Pagination page number to start from',
+			},
+			{
+				displayName: 'List ID',
+				name: 'audienceListId',
+				type: 'string',
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['listGet', 'listUpdate', 'listDelete', 'contactAttachList', 'contactDetachList'],
+					},
+				},
+				description: 'The audience list ID',
+			},
+			{
+				displayName: 'Contact ID',
+				name: 'audienceContactId',
+				type: 'string',
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: [
+							'contactGet',
+							'contactUpdate',
+							'contactDelete',
+							'contactAttachList',
+							'contactDetachList',
+							'contactSubscribeTopic',
+							'contactUnsubscribeTopic',
+						],
+					},
+				},
+				description: 'The audience contact ID',
+			},
+			{
+				displayName: 'Topic ID',
+				name: 'audienceTopicId',
+				type: 'string',
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: [
+							'topicGet',
+							'topicUpdate',
+							'topicDelete',
+							'contactSubscribeTopic',
+							'contactUnsubscribeTopic',
+						],
+					},
+				},
+				description: 'The audience topic ID',
+			},
+			{
+				displayName: 'Property ID',
+				name: 'audiencePropertyId',
+				type: 'string',
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['propertyGet', 'propertyUpdate', 'propertyDelete'],
+					},
+				},
+				description: 'The audience property ID',
+			},
+			{
+				displayName: 'Segment ID',
+				name: 'audienceSegmentId',
+				type: 'string',
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['segmentGet', 'segmentUpdate', 'segmentDelete'],
+					},
+				},
+				description: 'The audience segment ID',
+			},
+			{
+				displayName: 'Name',
+				name: 'audienceListName',
+				type: 'string',
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['listCreate', 'listUpdate'],
+					},
+				},
+				description: 'Name of the audience list',
+			},
+			{
+				displayName: 'List IDs',
+				name: 'audienceListIds',
+				type: 'string',
+				required: true,
+				default: '',
+				placeholder: 'id1, id2, id3',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['listDeleteMany'],
+					},
+				},
+				description: 'IDs of the lists to delete (comma, semicolon, or newline separated)',
+			},
+			{
+				displayName: 'Email',
+				name: 'contactEmail',
+				type: 'string',
+				required: true,
+				default: '',
+				placeholder: 'jane@example.com',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['contactCreate'],
+					},
+				},
+				description: 'Email address of the contact',
+			},
+			{
+				displayName: 'Emails',
+				name: 'contactEmails',
+				type: 'string',
+				required: true,
+				default: '',
+				placeholder: 'jane@example.com, joe@example.com',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['contactCreateMany'],
+					},
+				},
+				description:
+					'Email addresses to create (comma, semicolon, or newline separated, max 1000)',
+			},
+			{
+				displayName: 'List ID',
+				name: 'contactListId',
+				type: 'string',
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['contactCreate', 'contactCreateMany'],
+					},
+				},
+				description: 'Optional list to add the contact(s) to',
+			},
+			{
+				displayName: 'Properties',
+				name: 'propertiesUi',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				placeholder: 'Add Property',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['contactCreate', 'contactCreateMany', 'contactUpdate'],
+					},
+				},
+				description:
+					'Custom property values. Each name must match a property defined for the team.',
+				options: [
+					{
+						name: 'property',
+						displayName: 'Property',
+						values: [
+							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								description: 'Property name (key)',
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+								description: 'Property value',
+							},
+						],
+					},
+				],
+			},
+			{
+				displayName: 'Double Opt-In',
+				name: 'doubleOptIn',
+				type: 'collection',
+				default: {},
+				placeholder: 'Add Double Opt-In Config',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['contactCreate'],
+					},
+				},
+				description:
+					'When set, the contact is created as unverified and receives a confirmation email',
+				options: [
+					{
+						displayName: 'From',
+						name: 'from',
+						type: 'string',
+						default: '',
+						placeholder: 'no-reply@example.com',
+						description: 'Sender email address for the confirmation email',
+					},
+					{
+						displayName: 'From Name',
+						name: 'fromName',
+						type: 'string',
+						default: '',
+						description: 'Sender display name',
+					},
+					{
+						displayName: 'Redirect URL',
+						name: 'redirectUrl',
+						type: 'string',
+						default: '',
+						description: 'URL to redirect to after the contact confirms',
+					},
+					{
+						displayName: 'Subject',
+						name: 'subject',
+						type: 'string',
+						default: '',
+						description: 'Subject line of the confirmation email',
+					},
+					{
+						displayName: 'Template Slug',
+						name: 'templateSlug',
+						type: 'string',
+						default: '',
+						description: 'Template slug used to render the confirmation email',
+					},
+				],
+			},
+			{
+				displayName: 'Update Fields',
+				name: 'contactUpdateFields',
+				type: 'collection',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['contactUpdate'],
+					},
+				},
+				options: [
+					{
+						displayName: 'Email',
+						name: 'email',
+						type: 'string',
+						default: '',
+						description: 'New email address for the contact',
+					},
+					{
+						displayName: 'Status',
+						name: 'status',
+						type: 'options',
+						default: 'subscribed',
+						options: [
+							{ name: 'Subscribed', value: 'subscribed' },
+							{ name: 'Unsubscribed', value: 'unsubscribed' },
+						],
+						description: 'Subscription status of the contact',
+					},
+				],
+			},
+			{
+				displayName: 'Contact IDs',
+				name: 'contactIds',
+				type: 'string',
+				required: true,
+				default: '',
+				placeholder: 'id1, id2',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['contactBulkAttachLists', 'contactBulkDetachLists'],
+					},
+				},
+				description: 'Contact IDs (comma, semicolon, or newline separated)',
+			},
+			{
+				displayName: 'List IDs',
+				name: 'listIds',
+				type: 'string',
+				required: true,
+				default: '',
+				placeholder: 'id1, id2',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['contactBulkAttachLists', 'contactBulkDetachLists'],
+					},
+				},
+				description: 'List IDs (comma, semicolon, or newline separated)',
+			},
+			{
+				displayName: 'Filters',
+				name: 'contactFilters',
+				type: 'collection',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['contactGetAll'],
+					},
+				},
+				options: [
+					{
+						displayName: 'List ID',
+						name: 'listId',
+						type: 'string',
+						default: '',
+						description: 'Filter contacts by list ID',
+					},
+					{
+						displayName: 'Search',
+						name: 'search',
+						type: 'string',
+						default: '',
+						description: 'Search contacts by email address',
+					},
+					{
+						displayName: 'Segment ID',
+						name: 'segmentId',
+						type: 'string',
+						default: '',
+						description: 'Filter contacts by segment ID',
+					},
+					{
+						displayName: 'Status',
+						name: 'status',
+						type: 'options',
+						default: 'subscribed',
+						options: [
+							{ name: 'Bounced', value: 'bounced' },
+							{ name: 'Complained', value: 'complained' },
+							{ name: 'Subscribed', value: 'subscribed' },
+							{ name: 'Unsubscribed', value: 'unsubscribed' },
+							{ name: 'Unverified', value: 'unverified' },
+						],
+						description: 'Filter contacts by subscription status',
+					},
+				],
+			},
+			{
+				displayName: 'Name',
+				name: 'topicName',
+				type: 'string',
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['topicCreate'],
+					},
+				},
+				description: 'Name of the topic',
+			},
+			{
+				displayName: 'Additional Fields',
+				name: 'topicCreateFields',
+				type: 'collection',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['topicCreate'],
+					},
+				},
+				options: [
+					{
+						displayName: 'Default Subscription',
+						name: 'defaultSubscription',
+						type: 'options',
+						default: 'opt_in',
+						options: [
+							{ name: 'Opt In', value: 'opt_in' },
+							{ name: 'Opt Out', value: 'opt_out' },
+						],
+						description: 'Default subscription behavior for new contacts on this topic',
+					},
+					{
+						displayName: 'Description',
+						name: 'description',
+						type: 'string',
+						default: '',
+						description: 'Description of the topic',
+					},
+					{
+						displayName: 'Visibility',
+						name: 'visibility',
+						type: 'options',
+						default: 'private',
+						options: [
+							{ name: 'Private', value: 'private' },
+							{ name: 'Public', value: 'public' },
+						],
+						description: 'Visibility of the topic (private or public)',
+					},
+				],
+			},
+			{
+				displayName: 'Update Fields',
+				name: 'topicUpdateFields',
+				type: 'collection',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['topicUpdate'],
+					},
+				},
+				options: [
+					{
+						displayName: 'Description',
+						name: 'description',
+						type: 'string',
+						default: '',
+						description: 'New description for the topic',
+					},
+					{
+						displayName: 'Name',
+						name: 'name',
+						type: 'string',
+						default: '',
+						description: 'New name for the topic',
+					},
+					{
+						displayName: 'Visibility',
+						name: 'visibility',
+						type: 'options',
+						default: 'private',
+						options: [
+							{ name: 'Private', value: 'private' },
+							{ name: 'Public', value: 'public' },
+						],
+						description: 'Visibility of the topic (private or public)',
+					},
+				],
+			},
+			{
+				displayName: 'Name',
+				name: 'propertyName',
+				type: 'string',
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['propertyCreate'],
+					},
+				},
+				description: 'Name of the property',
+			},
+			{
+				displayName: 'Type',
+				name: 'propertyType',
+				type: 'options',
+				default: 'string',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['propertyCreate'],
+					},
+				},
+				options: [
+					{ name: 'Boolean', value: 'boolean' },
+					{ name: 'Date', value: 'date' },
+					{ name: 'JSON', value: 'json' },
+					{ name: 'Number', value: 'number' },
+					{ name: 'String', value: 'string' },
+				],
+				description: 'Data type of the property (cannot be changed after creation)',
+			},
+			{
+				displayName: 'Fallback Value',
+				name: 'propertyFallbackValue',
+				type: 'string',
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['propertyCreate', 'propertyUpdate'],
+					},
+				},
+				description: 'Default value used when a contact has no value for this property',
+			},
+			{
+				displayName: 'Name',
+				name: 'segmentName',
+				type: 'string',
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['segmentCreate'],
+					},
+				},
+				description: 'Name of the segment',
+			},
+			{
+				displayName: 'List ID',
+				name: 'segmentListId',
+				type: 'string',
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['segmentCreate'],
+					},
+				},
+				description: 'Optional list to restrict the segment to',
+			},
+			{
+				displayName: 'Conditions (JSON)',
+				name: 'segmentConditionsJson',
+				type: 'string',
+				typeOptions: {
+					rows: 6,
+				},
+				required: true,
+				default: '',
+				placeholder:
+					'{"groups":[{"conditions":[{"field":"email","operator":"contains","value":"@example.com"}]}]}',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['segmentCreate'],
+					},
+				},
+				description:
+					'Segment conditions as JSON. Groups are joined by OR; conditions within a group by AND.',
+			},
+			{
+				displayName: 'List ID',
+				name: 'segmentListIdFilter',
+				type: 'string',
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['segmentGetAll'],
+					},
+				},
+				description: 'Filter segments by list ID',
+			},
+			{
+				displayName: 'Update Fields',
+				name: 'segmentUpdateFields',
+				type: 'collection',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['audienceContact', 'audienceList', 'audienceProperty', 'audienceSegment', 'audienceTopic'],
+						operation: ['segmentUpdate'],
+					},
+				},
+				options: [
+					{
+						displayName: 'Conditions (JSON)',
+						name: 'conditionsJson',
+						type: 'string',
+						typeOptions: {
+							rows: 6,
+						},
+						default: '',
+						description: 'New segment conditions as JSON',
+					},
+					{
+						displayName: 'List ID',
+						name: 'listId',
+						type: 'string',
+						default: '',
+						description: 'Restrict the segment to a single list',
+					},
+					{
+						displayName: 'Name',
+						name: 'name',
+						type: 'string',
+						default: '',
+						description: 'New name for the segment',
+					},
+				],
+			},
 		],
 	};
 
@@ -2339,6 +3359,597 @@ export class Lettr implements INodeType {
 								returnData.push({ json: entry, pairedItem: itemIndex });
 							}
 						}
+					}
+				}
+				if (resource.startsWith('audience')) {
+					// --- Lists ---
+					if (operation === 'listGetAll') {
+						const returnAll = this.getNodeParameter('returnAll', itemIndex) as boolean;
+						const limit = this.getNodeParameter('limit', itemIndex, 50) as number;
+						const simplify = this.getNodeParameter('simplify', itemIndex, true) as boolean;
+						const page = this.getNodeParameter('audiencePage', itemIndex, 1) as number;
+						returnData.push(
+							...(await paginatedGetMany.call(
+								this,
+								'/audience/lists',
+								'lists',
+								itemIndex,
+								{},
+								returnAll,
+								limit,
+								simplify,
+								page,
+							)),
+						);
+					}
+
+					if (operation === 'listGet') {
+						const listId = this.getNodeParameter('audienceListId', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'GET',
+							`/audience/lists/${listId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'listCreate') {
+						const name = this.getNodeParameter('audienceListName', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'POST',
+							'/audience/lists',
+							itemIndex,
+							{ name },
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'listUpdate') {
+						const listId = this.getNodeParameter('audienceListId', itemIndex) as string;
+						const name = this.getNodeParameter('audienceListName', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'PATCH',
+							`/audience/lists/${listId}`,
+							itemIndex,
+							{ name },
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'listDelete') {
+						const listId = this.getNodeParameter('audienceListId', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'DELETE',
+							`/audience/lists/${listId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'listDeleteMany') {
+						const listIds = splitRecipientList(
+							this.getNodeParameter('audienceListIds', itemIndex) as string,
+						);
+						if (listIds.length === 0) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'"List IDs" must contain at least one ID.',
+								{ itemIndex },
+							);
+						}
+						const response = await lettrApiRequest.call(
+							this,
+							'DELETE',
+							'/audience/lists/bulk',
+							itemIndex,
+							{ list_ids: listIds },
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					// --- Contacts ---
+					if (operation === 'contactGetAll') {
+						const returnAll = this.getNodeParameter('returnAll', itemIndex) as boolean;
+						const limit = this.getNodeParameter('limit', itemIndex, 50) as number;
+						const simplify = this.getNodeParameter('simplify', itemIndex, true) as boolean;
+						const page = this.getNodeParameter('audiencePage', itemIndex, 1) as number;
+						const filters = this.getNodeParameter('contactFilters', itemIndex, {}) as IDataObject;
+
+						const queryBase: IDataObject = {};
+						if (filters.search) queryBase.search = filters.search;
+						if (filters.status) queryBase.status = filters.status;
+						if (filters.listId) queryBase.list_id = filters.listId;
+						if (filters.segmentId) queryBase.segment_id = filters.segmentId;
+
+						returnData.push(
+							...(await paginatedGetMany.call(
+								this,
+								'/audience/contacts',
+								'contacts',
+								itemIndex,
+								queryBase,
+								returnAll,
+								limit,
+								simplify,
+								page,
+							)),
+						);
+					}
+
+					if (operation === 'contactGet') {
+						const contactId = this.getNodeParameter('audienceContactId', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'GET',
+							`/audience/contacts/${contactId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'contactCreate') {
+						const email = this.getNodeParameter('contactEmail', itemIndex) as string;
+						const listId = this.getNodeParameter('contactListId', itemIndex, '') as string;
+						const propertiesUi = this.getNodeParameter('propertiesUi', itemIndex, {}) as IDataObject;
+						const doubleOptIn = this.getNodeParameter('doubleOptIn', itemIndex, {}) as IDataObject;
+
+						const body: IDataObject = { email };
+						if (listId) body.list_id = listId;
+						const props = collectProperties(propertiesUi);
+						if (Object.keys(props).length > 0) body.properties = props;
+
+						if (Object.keys(doubleOptIn).length > 0) {
+							const doi: IDataObject = {};
+							if (doubleOptIn.from) doi.from = doubleOptIn.from;
+							if (doubleOptIn.fromName) doi.from_name = doubleOptIn.fromName;
+							if (doubleOptIn.subject) doi.subject = doubleOptIn.subject;
+							if (doubleOptIn.templateSlug) doi.template_slug = doubleOptIn.templateSlug;
+							if (doubleOptIn.redirectUrl) doi.redirect_url = doubleOptIn.redirectUrl;
+
+							const missing = ['from', 'subject', 'template_slug', 'redirect_url'].filter(
+								(key) => !(key in doi),
+							);
+							if (missing.length > 0) {
+								throw new NodeOperationError(
+									this.getNode(),
+									`Double Opt-In requires: ${missing.join(', ')}.`,
+									{ itemIndex },
+								);
+							}
+							body.double_opt_in = doi;
+						}
+
+						const response = await lettrApiRequest.call(
+							this,
+							'POST',
+							'/audience/contacts',
+							itemIndex,
+							body,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'contactCreateMany') {
+						const emails = splitRecipientList(
+							this.getNodeParameter('contactEmails', itemIndex) as string,
+						);
+						if (emails.length === 0) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'"Emails" must contain at least one address.',
+								{ itemIndex },
+							);
+						}
+						const listId = this.getNodeParameter('contactListId', itemIndex, '') as string;
+						const propertiesUi = this.getNodeParameter('propertiesUi', itemIndex, {}) as IDataObject;
+
+						const body: IDataObject = { emails };
+						if (listId) body.list_id = listId;
+						const props = collectProperties(propertiesUi);
+						if (Object.keys(props).length > 0) body.properties = props;
+
+						const response = await lettrApiRequest.call(
+							this,
+							'POST',
+							'/audience/contacts/bulk',
+							itemIndex,
+							body,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'contactUpdate') {
+						const contactId = this.getNodeParameter('audienceContactId', itemIndex) as string;
+						const fields = this.getNodeParameter(
+							'contactUpdateFields',
+							itemIndex,
+							{},
+						) as IDataObject;
+						const propertiesUi = this.getNodeParameter('propertiesUi', itemIndex, {}) as IDataObject;
+
+						const body: IDataObject = {};
+						if (fields.email) body.email = fields.email;
+						if (fields.status) body.status = fields.status;
+						const props = collectProperties(propertiesUi);
+						if (Object.keys(props).length > 0) body.properties = props;
+
+						if (Object.keys(body).length === 0) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'Provide at least one field to update.',
+								{ itemIndex },
+							);
+						}
+
+						const response = await lettrApiRequest.call(
+							this,
+							'PATCH',
+							`/audience/contacts/${contactId}`,
+							itemIndex,
+							body,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'contactDelete') {
+						const contactId = this.getNodeParameter('audienceContactId', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'DELETE',
+							`/audience/contacts/${contactId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'contactAttachList' || operation === 'contactDetachList') {
+						const contactId = this.getNodeParameter('audienceContactId', itemIndex) as string;
+						const listId = this.getNodeParameter('audienceListId', itemIndex) as string;
+						const method: IHttpRequestMethods =
+							operation === 'contactDetachList' ? 'DELETE' : 'POST';
+						const response = await lettrApiRequest.call(
+							this,
+							method,
+							`/audience/contacts/${contactId}/lists/${listId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'contactSubscribeTopic' || operation === 'contactUnsubscribeTopic') {
+						const contactId = this.getNodeParameter('audienceContactId', itemIndex) as string;
+						const topicId = this.getNodeParameter('audienceTopicId', itemIndex) as string;
+						const method: IHttpRequestMethods =
+							operation === 'contactUnsubscribeTopic' ? 'DELETE' : 'POST';
+						const response = await lettrApiRequest.call(
+							this,
+							method,
+							`/audience/contacts/${contactId}/topics/${topicId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'contactBulkAttachLists' || operation === 'contactBulkDetachLists') {
+						const contactIds = splitRecipientList(
+							this.getNodeParameter('contactIds', itemIndex) as string,
+						);
+						const listIds = splitRecipientList(
+							this.getNodeParameter('listIds', itemIndex) as string,
+						);
+						if (contactIds.length === 0 || listIds.length === 0) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'"Contact IDs" and "List IDs" must each contain at least one ID.',
+								{ itemIndex },
+							);
+						}
+						const method: IHttpRequestMethods =
+							operation === 'contactBulkDetachLists' ? 'DELETE' : 'POST';
+						const response = await lettrApiRequest.call(
+							this,
+							method,
+							'/audience/contacts/lists/bulk',
+							itemIndex,
+							{ contact_ids: contactIds, list_ids: listIds },
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					// --- Topics ---
+					if (operation === 'topicGetAll') {
+						const returnAll = this.getNodeParameter('returnAll', itemIndex) as boolean;
+						const limit = this.getNodeParameter('limit', itemIndex, 50) as number;
+						const simplify = this.getNodeParameter('simplify', itemIndex, true) as boolean;
+						const page = this.getNodeParameter('audiencePage', itemIndex, 1) as number;
+						returnData.push(
+							...(await paginatedGetMany.call(
+								this,
+								'/audience/topics',
+								'topics',
+								itemIndex,
+								{},
+								returnAll,
+								limit,
+								simplify,
+								page,
+							)),
+						);
+					}
+
+					if (operation === 'topicGet') {
+						const topicId = this.getNodeParameter('audienceTopicId', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'GET',
+							`/audience/topics/${topicId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'topicCreate') {
+						const name = this.getNodeParameter('topicName', itemIndex) as string;
+						const fields = this.getNodeParameter('topicCreateFields', itemIndex, {}) as IDataObject;
+
+						const body: IDataObject = { name };
+						if (fields.description) body.description = fields.description;
+						if (fields.defaultSubscription) {
+							body.default_subscription = fields.defaultSubscription;
+						}
+						if (fields.visibility) body.visibility = fields.visibility;
+
+						const response = await lettrApiRequest.call(
+							this,
+							'POST',
+							'/audience/topics',
+							itemIndex,
+							body,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'topicUpdate') {
+						const topicId = this.getNodeParameter('audienceTopicId', itemIndex) as string;
+						const fields = this.getNodeParameter('topicUpdateFields', itemIndex, {}) as IDataObject;
+
+						const body: IDataObject = {};
+						if (fields.name) body.name = fields.name;
+						if (fields.description !== undefined && fields.description !== '') {
+							body.description = fields.description;
+						}
+						if (fields.visibility) body.visibility = fields.visibility;
+
+						if (Object.keys(body).length === 0) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'Provide at least one field to update.',
+								{ itemIndex },
+							);
+						}
+
+						const response = await lettrApiRequest.call(
+							this,
+							'PATCH',
+							`/audience/topics/${topicId}`,
+							itemIndex,
+							body,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'topicDelete') {
+						const topicId = this.getNodeParameter('audienceTopicId', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'DELETE',
+							`/audience/topics/${topicId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					// --- Properties ---
+					if (operation === 'propertyGetAll') {
+						const returnAll = this.getNodeParameter('returnAll', itemIndex) as boolean;
+						const limit = this.getNodeParameter('limit', itemIndex, 50) as number;
+						const simplify = this.getNodeParameter('simplify', itemIndex, true) as boolean;
+						const page = this.getNodeParameter('audiencePage', itemIndex, 1) as number;
+						returnData.push(
+							...(await paginatedGetMany.call(
+								this,
+								'/audience/properties',
+								'properties',
+								itemIndex,
+								{},
+								returnAll,
+								limit,
+								simplify,
+								page,
+							)),
+						);
+					}
+
+					if (operation === 'propertyGet') {
+						const propertyId = this.getNodeParameter('audiencePropertyId', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'GET',
+							`/audience/properties/${propertyId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'propertyCreate') {
+						const name = this.getNodeParameter('propertyName', itemIndex) as string;
+						const type = this.getNodeParameter('propertyType', itemIndex) as string;
+						const fallbackValue = this.getNodeParameter(
+							'propertyFallbackValue',
+							itemIndex,
+							'',
+						) as string;
+
+						const body: IDataObject = { name, type };
+						if (fallbackValue !== '') body.fallback_value = fallbackValue;
+
+						const response = await lettrApiRequest.call(
+							this,
+							'POST',
+							'/audience/properties',
+							itemIndex,
+							body,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'propertyUpdate') {
+						const propertyId = this.getNodeParameter('audiencePropertyId', itemIndex) as string;
+						const fallbackValue = this.getNodeParameter(
+							'propertyFallbackValue',
+							itemIndex,
+							'',
+						) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'PATCH',
+							`/audience/properties/${propertyId}`,
+							itemIndex,
+							{ fallback_value: fallbackValue },
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'propertyDelete') {
+						const propertyId = this.getNodeParameter('audiencePropertyId', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'DELETE',
+							`/audience/properties/${propertyId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					// --- Segments ---
+					if (operation === 'segmentGetAll') {
+						const returnAll = this.getNodeParameter('returnAll', itemIndex) as boolean;
+						const limit = this.getNodeParameter('limit', itemIndex, 50) as number;
+						const simplify = this.getNodeParameter('simplify', itemIndex, true) as boolean;
+						const page = this.getNodeParameter('audiencePage', itemIndex, 1) as number;
+						const listIdFilter = this.getNodeParameter(
+							'segmentListIdFilter',
+							itemIndex,
+							'',
+						) as string;
+
+						const queryBase: IDataObject = {};
+						if (listIdFilter) queryBase.list_id = listIdFilter;
+
+						returnData.push(
+							...(await paginatedGetMany.call(
+								this,
+								'/audience/segments',
+								'segments',
+								itemIndex,
+								queryBase,
+								returnAll,
+								limit,
+								simplify,
+								page,
+							)),
+						);
+					}
+
+					if (operation === 'segmentGet') {
+						const segmentId = this.getNodeParameter('audienceSegmentId', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'GET',
+							`/audience/segments/${segmentId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'segmentCreate') {
+						const name = this.getNodeParameter('segmentName', itemIndex) as string;
+						const listId = this.getNodeParameter('segmentListId', itemIndex, '') as string;
+						const conditionsJson = this.getNodeParameter(
+							'segmentConditionsJson',
+							itemIndex,
+						) as string;
+						const conditions = parseOptionalJson(
+							conditionsJson,
+							'Conditions (JSON)',
+							itemIndex,
+							this,
+						);
+
+						const body: IDataObject = { name, conditions };
+						if (listId) body.list_id = listId;
+
+						const response = await lettrApiRequest.call(
+							this,
+							'POST',
+							'/audience/segments',
+							itemIndex,
+							body,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'segmentUpdate') {
+						const segmentId = this.getNodeParameter('audienceSegmentId', itemIndex) as string;
+						const fields = this.getNodeParameter(
+							'segmentUpdateFields',
+							itemIndex,
+							{},
+						) as IDataObject;
+
+						const body: IDataObject = {};
+						if (fields.name) body.name = fields.name;
+						if (fields.listId) body.list_id = fields.listId;
+						if (fields.conditionsJson) {
+							body.conditions = parseOptionalJson(
+								fields.conditionsJson as string,
+								'Conditions (JSON)',
+								itemIndex,
+								this,
+							);
+						}
+
+						if (Object.keys(body).length === 0) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'Provide at least one field to update.',
+								{ itemIndex },
+							);
+						}
+
+						const response = await lettrApiRequest.call(
+							this,
+							'PATCH',
+							`/audience/segments/${segmentId}`,
+							itemIndex,
+							body,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
+					}
+
+					if (operation === 'segmentDelete') {
+						const segmentId = this.getNodeParameter('audienceSegmentId', itemIndex) as string;
+						const response = await lettrApiRequest.call(
+							this,
+							'DELETE',
+							`/audience/segments/${segmentId}`,
+							itemIndex,
+						);
+						returnData.push({ json: response, pairedItem: itemIndex });
 					}
 				}
 			} catch (error) {

@@ -25,6 +25,16 @@ npm run build
   - Get Many
 - **Webhook**
   - Get Many
+- **Audience Contact**
+  - Get Many, Get, Create, Create Many, Update, Delete, Attach/Detach List, Bulk Attach/Detach Lists, Subscribe/Unsubscribe Topic
+- **Audience List**
+  - Get Many, Get, Create, Update, Delete, Delete Many
+- **Audience Topic**
+  - Get Many, Get, Create, Update, Delete
+- **Audience Property**
+  - Get Many, Get, Create, Update, Delete
+- **Audience Segment**
+  - Get Many, Get, Create, Update, Delete
 
 ## Credentials
 
@@ -63,3 +73,4 @@ Then restart n8n.
 - [List domains](https://docs.lettr.com/api-reference/domains/get-sending-domains)
 - [List templates](https://docs.lettr.com/api-reference/templates/get-all-email-templates)
 - [List webhooks](https://docs.lettr.com/api-reference/webhooks/get-all-webhooks)
+- [Audience API](https://docs.lettr.com/api-reference/introduction)

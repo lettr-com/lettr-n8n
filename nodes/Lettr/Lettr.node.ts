@@ -10,8 +10,26 @@ import type {
   JsonObject,
 } from "n8n-workflow";
 import { NodeApiError, NodeOperationError } from "n8n-workflow";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 const LETTR_BASE_URL = "https://app.lettr.com/api";
+
+/**
+ * Node version reported to the API, read from package.json at runtime so it is
+ * never duplicated as a literal. The compiled file lives at
+ * dist/nodes/Lettr/, so package.json sits three directories up.
+ */
+const LETTR_VERSION: string = (() => {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(join(__dirname, "../../../package.json"), "utf8"),
+    ) as { version?: string };
+    return pkg.version ?? "dev";
+  } catch {
+    return "dev";
+  }
+})();
 
 function splitRecipientList(value: string): string[] {
   return value
@@ -77,6 +95,9 @@ async function lettrApiRequest(
     json: true,
     body,
     qs,
+    headers: {
+      "User-Agent": `lettr-n8n/${LETTR_VERSION}`,
+    },
   };
 
   if (Object.keys(body).length === 0) {
@@ -198,6 +219,75 @@ async function paginatedGetMany(
   return out;
 }
 
+async function cursorGetMany(
+  this: IExecuteFunctions,
+  endpoint: string,
+  itemIndex: number,
+  queryBase: IDataObject,
+  pageSizeParam: string,
+  returnAll: boolean,
+  limit: number,
+  simplify: boolean,
+  extract: (response: IDataObject) => {
+    list: IDataObject[];
+    nextCursor?: string;
+  },
+  rebuild: (entries: IDataObject[]) => IDataObject,
+): Promise<INodeExecutionData[]> {
+  const out: INodeExecutionData[] = [];
+
+  if (!returnAll) {
+    const qs: IDataObject = { ...queryBase, [pageSizeParam]: limit };
+    const response = await lettrApiRequest.call(
+      this,
+      "GET",
+      endpoint,
+      itemIndex,
+      {},
+      qs,
+    );
+
+    if (!simplify) {
+      out.push({ json: response, pairedItem: itemIndex });
+    } else {
+      for (const entry of extract(response).list) {
+        out.push({ json: entry, pairedItem: itemIndex });
+      }
+    }
+    return out;
+  }
+
+  const entries: IDataObject[] = [];
+  let cursor: string | undefined;
+
+  do {
+    const qs: IDataObject = { ...queryBase, [pageSizeParam]: 100 };
+    if (cursor) qs.cursor = cursor;
+
+    const response = await lettrApiRequest.call(
+      this,
+      "GET",
+      endpoint,
+      itemIndex,
+      {},
+      qs,
+    );
+
+    const { list, nextCursor } = extract(response);
+    entries.push(...list);
+    cursor = nextCursor;
+  } while (cursor);
+
+  if (!simplify) {
+    out.push({ json: rebuild(entries), pairedItem: itemIndex });
+  } else {
+    for (const entry of entries) {
+      out.push({ json: entry, pairedItem: itemIndex });
+    }
+  }
+  return out;
+}
+
 const webhookEventOptions = [
   { name: "Engagement: AMP Click", value: "engagement.amp_click" },
   {
@@ -308,6 +398,10 @@ export class Lettr implements INodeType {
           {
             name: "Webhook",
             value: "webhook",
+          },
+          {
+            name: "Campaign",
+            value: "campaign",
           },
           {
             name: "Audience Contact",
@@ -1848,6 +1942,227 @@ export class Lettr implements INodeType {
         },
       },
       {
+        displayName: "Operation",
+        name: "operation",
+        type: "options",
+        noDataExpression: true,
+        default: "getAll",
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+          },
+        },
+        options: [
+          {
+            name: "Get",
+            value: "get",
+            description: "Get a campaign by ID",
+            action: "Get a campaign",
+          },
+          {
+            name: "Get Events",
+            value: "getEvents",
+            description:
+              "List campaign engagement events (open, click, bounce, etc.)",
+            action: "Get campaign events",
+          },
+          {
+            name: "Get Many",
+            value: "getAll",
+            description: "Get many campaigns",
+            action: "Get many campaigns",
+          },
+          {
+            name: "Schedule",
+            value: "schedule",
+            description: "Schedule a campaign for future delivery",
+            action: "Schedule a campaign",
+          },
+          {
+            name: "Send",
+            value: "send",
+            description: "Send a draft campaign immediately",
+            action: "Send a campaign",
+          },
+          {
+            name: "Unschedule",
+            value: "unschedule",
+            description: "Cancel a scheduled campaign and return it to draft",
+            action: "Unschedule a campaign",
+          },
+        ],
+      },
+      {
+        displayName: "Campaign ID",
+        name: "campaignId",
+        type: "string",
+        required: true,
+        default: "",
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+            operation: ["get", "getEvents", "send", "schedule", "unschedule"],
+          },
+        },
+        description: "The campaign ID",
+      },
+      {
+        displayName: "Status",
+        name: "status",
+        type: "options",
+        default: "",
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+            operation: ["getAll"],
+          },
+        },
+        options: [
+          { name: "Any", value: "" },
+          { name: "Draft", value: "draft" },
+          { name: "Scheduled", value: "scheduled" },
+          { name: "Preparing", value: "preparing" },
+          { name: "In Review", value: "in_review" },
+          { name: "Sending", value: "sending" },
+          { name: "Sent", value: "sent" },
+          { name: "Failed", value: "failed" },
+        ],
+        description: "Filter campaigns by status",
+      },
+      {
+        ...listOperationProperties[0],
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+            operation: ["getAll"],
+          },
+        },
+      },
+      {
+        ...listOperationProperties[1],
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+            operation: ["getAll"],
+            returnAll: [false],
+          },
+        },
+      },
+      {
+        ...listOperationProperties[2],
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+            operation: ["getAll"],
+          },
+        },
+      },
+      {
+        ...listOperationProperties[0],
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+            operation: ["getEvents"],
+          },
+        },
+      },
+      {
+        ...listOperationProperties[1],
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+            operation: ["getEvents"],
+            returnAll: [false],
+          },
+        },
+      },
+      {
+        ...listOperationProperties[2],
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+            operation: ["getEvents"],
+          },
+        },
+      },
+      {
+        displayName: "Event Type",
+        name: "campaignEventType",
+        type: "options",
+        default: "",
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+            operation: ["getEvents"],
+          },
+        },
+        options: [
+          { name: "Any", value: "" },
+          { name: "Injection", value: "injection" },
+          { name: "Delivery", value: "delivery" },
+          { name: "Bounce", value: "bounce" },
+          { name: "Spam Complaint", value: "spam_complaint" },
+          { name: "Open", value: "open" },
+          { name: "Click", value: "click" },
+          { name: "List Unsubscribe", value: "list_unsubscribe" },
+        ],
+        description: "Filter to a single event type. Leave as Any for all",
+      },
+      {
+        displayName: "Event Filters",
+        name: "campaignEventFilters",
+        type: "collection",
+        default: {},
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+            operation: ["getEvents"],
+          },
+        },
+        options: [
+          {
+            displayName: "Email",
+            name: "email",
+            type: "string",
+            default: "",
+            description: "Filter events by recipient email address",
+          },
+          {
+            displayName: "Start Date",
+            name: "startDate",
+            type: "string",
+            default: "",
+            placeholder: "2026-05-01",
+            description:
+              "Only events at or after this time (ISO 8601). A date-only value is treated as the start of that day in UTC",
+          },
+          {
+            displayName: "End Date",
+            name: "endDate",
+            type: "string",
+            default: "",
+            placeholder: "2026-05-31",
+            description:
+              "Only events at or before this time (ISO 8601), inclusive. A date-only value covers the whole of that day in UTC",
+          },
+        ],
+      },
+      {
+        displayName: "Scheduled At",
+        name: "scheduledAt",
+        type: "dateTime",
+        required: true,
+        default: "",
+        displayOptions: {
+          show: {
+            resource: ["campaign"],
+            operation: ["schedule"],
+          },
+        },
+        description:
+          "Future delivery time (ISO 8601). A value without a timezone offset is interpreted as UTC. Must be in the future",
+      },
+      {
         ...listOperationProperties[0],
         displayOptions: {
           show: {
@@ -2930,85 +3245,34 @@ export class Lettr implements INodeType {
             if (filters.bounceClasses)
               queryBase.bounce_classes = filters.bounceClasses;
 
-            const extractEvents = (
-              response: IDataObject,
-            ): {
-              list: IDataObject[];
-              nextCursor?: string;
-            } => {
-              const data = getResponseData(response);
-              const eventsContainer = (data.events as IDataObject) ?? {};
-              const list = Array.isArray(eventsContainer.data)
-                ? (eventsContainer.data as IDataObject[])
-                : [];
-              const pagination =
-                (eventsContainer.pagination as IDataObject) ?? {};
-              return {
-                list,
-                nextCursor:
-                  (pagination.next_cursor as string | undefined) ?? undefined,
-              };
-            };
-
-            if (!returnAll) {
-              const qs: IDataObject = {
-                ...queryBase,
-                per_page: limit,
-              };
-
-              const response = await lettrApiRequest.call(
+            returnData.push(
+              ...(await cursorGetMany.call(
                 this,
-                "GET",
                 "/emails/events",
                 itemIndex,
-                {},
-                qs,
-              );
-
-              if (!simplify) {
-                returnData.push({ json: response, pairedItem: itemIndex });
-              } else {
-                const { list } = extractEvents(response);
-                for (const entry of list) {
-                  returnData.push({ json: entry, pairedItem: itemIndex });
-                }
-              }
-            } else {
-              const entries: IDataObject[] = [];
-              let cursor: string | undefined;
-
-              do {
-                const qs: IDataObject = {
-                  ...queryBase,
-                  per_page: 100,
-                };
-                if (cursor) qs.cursor = cursor;
-
-                const response = await lettrApiRequest.call(
-                  this,
-                  "GET",
-                  "/emails/events",
-                  itemIndex,
-                  {},
-                  qs,
-                );
-
-                const { list, nextCursor } = extractEvents(response);
-                entries.push(...list);
-                cursor = nextCursor;
-              } while (cursor);
-
-              if (!simplify) {
-                returnData.push({
-                  json: { data: { events: { data: entries } } },
-                  pairedItem: itemIndex,
-                });
-              } else {
-                for (const entry of entries) {
-                  returnData.push({ json: entry, pairedItem: itemIndex });
-                }
-              }
-            }
+                queryBase,
+                "per_page",
+                returnAll,
+                limit,
+                simplify,
+                (response) => {
+                  const data = getResponseData(response);
+                  const eventsContainer = (data.events as IDataObject) ?? {};
+                  const list = Array.isArray(eventsContainer.data)
+                    ? (eventsContainer.data as IDataObject[])
+                    : [];
+                  const pagination =
+                    (eventsContainer.pagination as IDataObject) ?? {};
+                  return {
+                    list,
+                    nextCursor:
+                      (pagination.next_cursor as string | undefined) ??
+                      undefined,
+                  };
+                },
+                (entries) => ({ data: { events: { data: entries } } }),
+              )),
+            );
           }
 
           if (operation === "get") {
@@ -3787,6 +4051,162 @@ export class Lettr implements INodeType {
                 returnData.push({ json: entry, pairedItem: itemIndex });
               }
             }
+          }
+        }
+        if (resource === "campaign") {
+          if (operation === "getAll") {
+            const returnAll = this.getNodeParameter(
+              "returnAll",
+              itemIndex,
+            ) as boolean;
+            const limit = this.getNodeParameter(
+              "limit",
+              itemIndex,
+              50,
+            ) as number;
+            const simplify = this.getNodeParameter(
+              "simplify",
+              itemIndex,
+              true,
+            ) as boolean;
+            const status = this.getNodeParameter(
+              "status",
+              itemIndex,
+              "",
+            ) as string;
+
+            const queryBase: IDataObject = {};
+            if (status) queryBase.status = status;
+
+            returnData.push(
+              ...(await paginatedGetMany.call(
+                this,
+                "/campaigns",
+                "campaigns",
+                itemIndex,
+                queryBase,
+                returnAll,
+                Math.min(limit, 100),
+                simplify,
+                1,
+              )),
+            );
+          }
+
+          if (operation === "get") {
+            const campaignId = this.getNodeParameter(
+              "campaignId",
+              itemIndex,
+            ) as string;
+            const response = await lettrApiRequest.call(
+              this,
+              "GET",
+              `/campaigns/${campaignId}`,
+              itemIndex,
+            );
+            returnData.push({ json: response, pairedItem: itemIndex });
+          }
+
+          if (operation === "getEvents") {
+            const campaignId = this.getNodeParameter(
+              "campaignId",
+              itemIndex,
+            ) as string;
+            const returnAll = this.getNodeParameter(
+              "returnAll",
+              itemIndex,
+            ) as boolean;
+            const simplify = this.getNodeParameter(
+              "simplify",
+              itemIndex,
+              true,
+            ) as boolean;
+            const limit = this.getNodeParameter(
+              "limit",
+              itemIndex,
+              50,
+            ) as number;
+            const eventType = this.getNodeParameter(
+              "campaignEventType",
+              itemIndex,
+              "",
+            ) as string;
+            const filters = this.getNodeParameter(
+              "campaignEventFilters",
+              itemIndex,
+              {},
+            ) as IDataObject;
+
+            const queryBase: IDataObject = {};
+            if (eventType) queryBase.event_type = eventType;
+            if (filters.email) queryBase.email = filters.email;
+            if (filters.startDate) queryBase.start_date = filters.startDate;
+            if (filters.endDate) queryBase.end_date = filters.endDate;
+
+            returnData.push(
+              ...(await cursorGetMany.call(
+                this,
+                `/campaigns/${campaignId}/events`,
+                itemIndex,
+                queryBase,
+                "limit",
+                returnAll,
+                Math.min(limit, 100),
+                simplify,
+                (response) => {
+                  const data = getResponseData(response);
+                  const list = Array.isArray(data.events)
+                    ? (data.events as IDataObject[])
+                    : [];
+                  return {
+                    list,
+                    nextCursor:
+                      (data.next_cursor as string | undefined) ?? undefined,
+                  };
+                },
+                (entries) => ({ data: { events: entries } }),
+              )),
+            );
+          }
+
+          if (operation === "send" || operation === "unschedule") {
+            const campaignId = this.getNodeParameter(
+              "campaignId",
+              itemIndex,
+            ) as string;
+            const response = await lettrApiRequest.call(
+              this,
+              "POST",
+              `/campaigns/${campaignId}/${operation}`,
+              itemIndex,
+            );
+            returnData.push({ json: response, pairedItem: itemIndex });
+          }
+
+          if (operation === "schedule") {
+            const campaignId = this.getNodeParameter(
+              "campaignId",
+              itemIndex,
+            ) as string;
+            const scheduledAt = this.getNodeParameter(
+              "scheduledAt",
+              itemIndex,
+            ) as string;
+            if (!scheduledAt) {
+              throw new NodeOperationError(
+                this.getNode(),
+                '"Scheduled At" is required when scheduling a campaign.',
+                { itemIndex },
+              );
+            }
+            const response = await lettrApiRequest.call(
+              this,
+              "POST",
+              `/campaigns/${campaignId}/schedule`,
+              itemIndex,
+              { scheduled_at: scheduledAt },
+            );
+            returnData.push({ json: response, pairedItem: itemIndex });
           }
         }
         if (resource.startsWith("audience")) {

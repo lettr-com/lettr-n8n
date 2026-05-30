@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-30
+
+### Added
+- **Campaign** resource covering all `/campaigns` endpoints:
+  - **Get Many** — list campaigns with an optional status filter and pagination
+    (Return All / Limit / Simplify).
+  - **Get** — retrieve a single campaign, including its rendered HTML content.
+  - **Get Events** — list engagement events (open, click, bounce, etc.) with
+    cursor-based pagination and optional event type, email, and date filters.
+  - **Send** — dispatch a draft campaign immediately.
+  - **Schedule** / **Unschedule** — schedule a campaign for future delivery or
+    cancel a scheduled send.
+
 ## [0.3.0] - 2026-05-26
 
 ### Added

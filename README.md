@@ -25,6 +25,8 @@ npm run build
   - Get Many
 - **Webhook**
   - Get Many
+- **Campaign**
+  - Get Many, Get, Get Events, Send, Schedule, Unschedule
 - **Audience Contact**
   - Get Many, Get, Create, Create Many, Update, Delete, Attach/Detach List, Bulk Attach/Detach Lists, Subscribe/Unsubscribe Topic
 - **Audience List**

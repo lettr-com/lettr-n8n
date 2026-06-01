@@ -38,6 +38,9 @@ export class LettrApi implements ICredentialType {
       baseURL: "https://app.lettr.com/api",
       url: "/domains",
       method: "GET",
+      headers: {
+        "User-Agent": "lettr-n8n",
+      },
     },
   };
 }

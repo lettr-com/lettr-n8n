@@ -10,26 +10,15 @@ import type {
   JsonObject,
 } from "n8n-workflow";
 import { NodeApiError, NodeOperationError } from "n8n-workflow";
-import { readFileSync } from "fs";
-import { join } from "path";
 
 const LETTR_BASE_URL = "https://app.lettr.com/api";
 
 /**
- * Node version reported to the API, read from package.json at runtime so it is
- * never duplicated as a literal. The compiled file lives at
- * dist/nodes/Lettr/, so package.json sits three directories up.
+ * Node version reported to the API. Hardcoded as a build-time constant because
+ * n8n Cloud forbids community nodes from accessing `fs`/`path`/`__dirname` at
+ * runtime. Keep this in sync with the `version` field in package.json.
  */
-const LETTR_VERSION: string = (() => {
-  try {
-    const pkg = JSON.parse(
-      readFileSync(join(__dirname, "../../../package.json"), "utf8"),
-    ) as { version?: string };
-    return pkg.version ?? "dev";
-  } catch {
-    return "dev";
-  }
-})();
+const LETTR_VERSION = "0.5.0";
 
 function splitRecipientList(value: string): string[] {
   return value

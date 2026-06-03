@@ -5,6 +5,21 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-03
+
+### Changed
+- Node version is now reported to the API via a hardcoded build-time constant
+  instead of reading `package.json` at runtime, so the compiled node no longer
+  references `fs`/`path`/`__dirname` (required for n8n Cloud compatibility).
+
+### Fixed
+- ESLint no longer fails to parse the JS config files (`.eslintrc.js`,
+  `gulpfile.js`, `index.js`); they are linted without the type-aware parser.
+
+### CI
+- Added `npx @n8n/node-cli lint` to the CI workflow so every pull request and
+  push to `main` runs the n8n community node linter.
+
 ## [0.4.0] - 2026-05-30
 
 ### Added

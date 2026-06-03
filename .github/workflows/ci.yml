@@ -27,4 +27,7 @@ jobs:
 
       - run: npm run lint
 
+      - name: n8n node lint
+        run: npx @n8n/node-cli@latest lint
+
       - run: npm run build

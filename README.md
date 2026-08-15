@@ -28,7 +28,7 @@ npm run build
 - **Campaign**
   - Get Many, Get, Get Events, Send, Schedule, Unschedule
 - **Audience Contact**
-  - Get Many, Get, Create, Create Many, Update, Delete, Attach/Detach List, Bulk Attach/Detach Lists, Subscribe/Unsubscribe Topic
+  - Get Many, Get, Create, Create Many, Update, Delete, Attach/Detach List, Bulk Attach/Detach Lists, Subscribe/Unsubscribe Topic, Bulk Subscribe/Unsubscribe Topics
 - **Audience List**
   - Get Many, Get, Create, Update, Delete, Delete Many
 - **Audience Topic**
@@ -37,6 +37,53 @@ npm run build
   - Get Many, Get, Create, Update, Delete
 - **Audience Segment**
   - Get Many, Get, Create, Update, Delete
+
+## Bulk contact import
+
+**Audience Contact → Create Many** has two input modes.
+
+**Email List** (default) sends one list of addresses, with the same lists, topics
+and properties applied to everyone. This is the original behaviour — workflows
+built before per-contact rows existed keep sending the identical payload.
+
+**Per-Contact Rows** takes a JSON array where each contact carries its own data:
+
+```json
+[
+  {
+    "email": "cara@example.com",
+    "properties": { "plan": "pro" },
+    "list_ids": ["01h-vip"],
+    "topics": [{ "id": "01h-newsletter", "subscription": "opt_in" }]
+  },
+  { "email": "dan@example.com" }
+]
+```
+
+Row values stack on top of anything in **Batch Options**, with one exception: a
+row-level topic `opt_out` beats a batch-level `opt_in`. That is the point of
+`opt_out` — a topic configured to auto-subscribe new contacts can be suppressed
+for specific people in the same request, instead of a second cleanup call.
+
+**Update Existing** (off by default) controls only whether properties are merged
+into contacts that already exist. Existing contacts are attached to the requested
+lists and topics either way.
+
+### Reading the response
+
+The node returns the API response as-is. Two things to watch:
+
+- **A successful run does not mean every row landed.** The API answers `201` even
+  when rows were skipped. Check `data.error_count` and `data.errors[]` — each
+  error carries `index` (zero-based into the rows you submitted), `email`,
+  `error_code` and `error`. Branch on `error_count` with an If node if partial
+  failure should stop the workflow.
+- **`already_existed` and `updated` overlap.** They answer different questions —
+  "was it already there?" and "did we change it?" — so they do not sum to the row
+  count. A contact that existed and got attached to a list is counted in both.
+
+`data.contacts[]` gives back `{ id, email, created }` for every contact in
+submission order, so a follow-up node can use the IDs without a lookup.
 
 ## Credentials
 

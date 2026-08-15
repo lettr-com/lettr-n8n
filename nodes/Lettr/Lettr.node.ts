@@ -18,7 +18,7 @@ const LETTR_BASE_URL = "https://app.lettr.com/api";
  * n8n Cloud forbids community nodes from accessing `fs`/`path`/`__dirname` at
  * runtime. Keep this in sync with the `version` field in package.json.
  */
-const LETTR_VERSION = "0.5.0";
+const LETTR_VERSION = "0.6.0";
 
 function splitRecipientList(value: string): string[] {
   return value
@@ -638,6 +638,18 @@ export class Lettr implements INodeType {
             value: "contactBulkDetachLists",
             description: "Detach many contacts from many lists",
             action: "Bulk detach contacts from lists",
+          },
+          {
+            name: "Bulk Subscribe to Topics",
+            value: "contactBulkSubscribeTopics",
+            description: "Subscribe many contacts to many topics",
+            action: "Bulk subscribe contacts to topics",
+          },
+          {
+            name: "Bulk Unsubscribe From Topics",
+            value: "contactBulkUnsubscribeTopics",
+            description: "Unsubscribe many contacts from many topics",
+            action: "Bulk unsubscribe contacts from topics",
           },
           {
             name: "Create",
@@ -2427,6 +2439,40 @@ export class Lettr implements INodeType {
         description: "Email address of the contact",
       },
       {
+        displayName: "Input Mode",
+        name: "contactInputMode",
+        type: "options",
+        default: "emails",
+        displayOptions: {
+          show: {
+            resource: [
+              "audienceContact",
+              "audienceList",
+              "audienceProperty",
+              "audienceSegment",
+              "audienceTopic",
+            ],
+            operation: ["contactCreateMany"],
+          },
+        },
+        options: [
+          {
+            name: "Email List",
+            value: "emails",
+            description:
+              "One list of addresses; the same lists, topics, and properties apply to every contact",
+          },
+          {
+            name: "Per-Contact Rows",
+            value: "contacts",
+            description:
+              "Each contact carries its own properties, lists, and topic subscriptions",
+          },
+        ],
+        description:
+          "How the batch is described. Per-contact rows are needed when contacts differ from each other.",
+      },
+      {
         displayName: "Emails",
         name: "contactEmails",
         type: "string",
@@ -2443,10 +2489,34 @@ export class Lettr implements INodeType {
               "audienceTopic",
             ],
             operation: ["contactCreateMany"],
+            contactInputMode: ["emails"],
           },
         },
         description:
           "Email addresses to create (comma, semicolon, or newline separated, max 1000)",
+      },
+      {
+        displayName: "Contacts",
+        name: "contactRows",
+        type: "json",
+        required: true,
+        default:
+          '[\n  {\n    "email": "jane@example.com",\n    "properties": { "plan": "pro" },\n    "list_ids": ["list-id"],\n    "topics": [{ "id": "topic-id", "subscription": "opt_in" }]\n  }\n]',
+        displayOptions: {
+          show: {
+            resource: [
+              "audienceContact",
+              "audienceList",
+              "audienceProperty",
+              "audienceSegment",
+              "audienceTopic",
+            ],
+            operation: ["contactCreateMany"],
+            contactInputMode: ["contacts"],
+          },
+        },
+        description:
+          'JSON array of contact rows (max 1000). Only "email" is required per row; "properties", "list_ids", and "topics" are optional and are applied on top of the batch-wide values. A row-level topic "opt_out" wins over a batch-level "opt_in".',
       },
       {
         displayName: "List ID",
@@ -2510,6 +2580,54 @@ export class Lettr implements INodeType {
                 description: "Property value",
               },
             ],
+          },
+        ],
+      },
+      {
+        displayName: "Batch Options",
+        name: "contactBulkOptions",
+        type: "collection",
+        default: {},
+        placeholder: "Add Batch Option",
+        displayOptions: {
+          show: {
+            resource: [
+              "audienceContact",
+              "audienceList",
+              "audienceProperty",
+              "audienceSegment",
+              "audienceTopic",
+            ],
+            operation: ["contactCreateMany"],
+          },
+        },
+        description:
+          "Applied to every contact in the batch, on top of anything set on an individual row",
+        options: [
+          {
+            displayName: "List IDs",
+            name: "listIds",
+            type: "string",
+            default: "",
+            placeholder: "id1, id2",
+            description:
+              "Lists every contact in the batch is attached to (comma, semicolon, or newline separated, max 50)",
+          },
+          {
+            displayName: "Topics",
+            name: "topics",
+            type: "json",
+            default: '[{ "id": "topic-id", "subscription": "opt_in" }]',
+            description:
+              'JSON array of topic subscriptions applied to the whole batch (max 50). Each entry is {"id": "...", "subscription": "opt_in" | "opt_out"}; "subscription" defaults to "opt_in". Use "opt_out" to stop a topic that auto-subscribes new contacts.',
+          },
+          {
+            displayName: "Update Existing",
+            name: "updateExisting",
+            type: "boolean",
+            default: false,
+            description:
+              "Whether to merge the submitted properties into contacts that already exist. When off, existing contacts keep their properties but are still attached to the requested lists and topics.",
           },
         ],
       },
@@ -2626,7 +2744,12 @@ export class Lettr implements INodeType {
               "audienceSegment",
               "audienceTopic",
             ],
-            operation: ["contactBulkAttachLists", "contactBulkDetachLists"],
+            operation: [
+              "contactBulkAttachLists",
+              "contactBulkDetachLists",
+              "contactBulkSubscribeTopics",
+              "contactBulkUnsubscribeTopics",
+            ],
           },
         },
         description: "Contact IDs (comma, semicolon, or newline separated)",
@@ -2651,6 +2774,31 @@ export class Lettr implements INodeType {
           },
         },
         description: "List IDs (comma, semicolon, or newline separated)",
+      },
+      {
+        displayName: "Topic IDs",
+        name: "topicIds",
+        type: "string",
+        required: true,
+        default: "",
+        placeholder: "id1, id2",
+        displayOptions: {
+          show: {
+            resource: [
+              "audienceContact",
+              "audienceList",
+              "audienceProperty",
+              "audienceSegment",
+              "audienceTopic",
+            ],
+            operation: [
+              "contactBulkSubscribeTopics",
+              "contactBulkUnsubscribeTopics",
+            ],
+          },
+        },
+        description:
+          "Topic IDs (comma, semicolon, or newline separated, max 50)",
       },
       {
         displayName: "Filters",
@@ -4443,16 +4591,55 @@ export class Lettr implements INodeType {
           }
 
           if (operation === "contactCreateMany") {
-            const emails = splitRecipientList(
-              this.getNodeParameter("contactEmails", itemIndex) as string,
-            );
-            if (emails.length === 0) {
-              throw new NodeOperationError(
-                this.getNode(),
-                '"Emails" must contain at least one address.',
-                { itemIndex },
+            // Defaults to "emails" so workflows saved before per-contact rows
+            // existed keep sending the exact same payload.
+            const inputMode = this.getNodeParameter(
+              "contactInputMode",
+              itemIndex,
+              "emails",
+            ) as string;
+
+            const body: IDataObject = {};
+
+            if (inputMode === "contacts") {
+              const rows = parseOptionalJson(
+                this.getNodeParameter("contactRows", itemIndex) as string,
+                "Contacts",
+                itemIndex,
+                this,
               );
+              if (!Array.isArray(rows) || rows.length === 0) {
+                throw new NodeOperationError(
+                  this.getNode(),
+                  '"Contacts" must be a JSON array with at least one row.',
+                  { itemIndex },
+                );
+              }
+              const missing = rows.findIndex(
+                (row) => !row || typeof row !== "object" || !row.email,
+              );
+              if (missing !== -1) {
+                throw new NodeOperationError(
+                  this.getNode(),
+                  `"Contacts" row ${missing} is missing the required "email" field.`,
+                  { itemIndex },
+                );
+              }
+              body.contacts = rows;
+            } else {
+              const emails = splitRecipientList(
+                this.getNodeParameter("contactEmails", itemIndex) as string,
+              );
+              if (emails.length === 0) {
+                throw new NodeOperationError(
+                  this.getNode(),
+                  '"Emails" must contain at least one address.',
+                  { itemIndex },
+                );
+              }
+              body.emails = emails;
             }
+
             const listId = this.getNodeParameter(
               "contactListId",
               itemIndex,
@@ -4463,11 +4650,41 @@ export class Lettr implements INodeType {
               itemIndex,
               {},
             ) as IDataObject;
+            const batchOptions = this.getNodeParameter(
+              "contactBulkOptions",
+              itemIndex,
+              {},
+            ) as IDataObject;
 
-            const body: IDataObject = { emails };
             if (listId) body.list_id = listId;
             const props = collectProperties(propertiesUi);
             if (Object.keys(props).length > 0) body.properties = props;
+
+            const batchListIds = splitRecipientList(
+              (batchOptions.listIds as string) ?? "",
+            );
+            if (batchListIds.length > 0) body.list_ids = batchListIds;
+
+            if (batchOptions.topics) {
+              const topics = parseOptionalJson(
+                batchOptions.topics as string,
+                "Topics",
+                itemIndex,
+                this,
+              );
+              if (!Array.isArray(topics)) {
+                throw new NodeOperationError(
+                  this.getNode(),
+                  '"Topics" must be a JSON array.',
+                  { itemIndex },
+                );
+              }
+              if (topics.length > 0) body.topics = topics;
+            }
+
+            if (batchOptions.updateExisting !== undefined) {
+              body.update_existing = batchOptions.updateExisting as boolean;
+            }
 
             const response = await lettrApiRequest.call(
               this,
@@ -4604,6 +4821,35 @@ export class Lettr implements INodeType {
               "/audience/contacts/lists/bulk",
               itemIndex,
               { contact_ids: contactIds, list_ids: listIds },
+            );
+            returnData.push({ json: response, pairedItem: itemIndex });
+          }
+
+          if (
+            operation === "contactBulkSubscribeTopics" ||
+            operation === "contactBulkUnsubscribeTopics"
+          ) {
+            const contactIds = splitRecipientList(
+              this.getNodeParameter("contactIds", itemIndex) as string,
+            );
+            const topicIds = splitRecipientList(
+              this.getNodeParameter("topicIds", itemIndex) as string,
+            );
+            if (contactIds.length === 0 || topicIds.length === 0) {
+              throw new NodeOperationError(
+                this.getNode(),
+                '"Contact IDs" and "Topic IDs" must each contain at least one ID.',
+                { itemIndex },
+              );
+            }
+            const method: IHttpRequestMethods =
+              operation === "contactBulkUnsubscribeTopics" ? "DELETE" : "POST";
+            const response = await lettrApiRequest.call(
+              this,
+              method,
+              "/audience/contacts/topics/bulk",
+              itemIndex,
+              { contact_ids: contactIds, topic_ids: topicIds },
             );
             returnData.push({ json: response, pairedItem: itemIndex });
           }

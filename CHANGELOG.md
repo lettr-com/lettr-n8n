@@ -5,6 +5,42 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-08-14
+
+Covers the reworked bulk contact import (TPL-2105) and the duplicate-create fix.
+Everything here is additive — existing workflows keep working untouched and send
+the exact same payloads.
+
+### Added
+- **Per-contact bulk import.** *Audience Contact → Create Many* gains an **Input
+  Mode** field. The new **Per-Contact Rows** mode takes a JSON array where each
+  contact carries its own `properties`, `list_ids` and `topics`, as an
+  alternative to the flat **Emails** list. **Email List** stays the default, so
+  saved workflows send an unchanged request body.
+- **Batch Options** on *Create Many*: **List IDs** (`list_ids`, max 50),
+  **Topics** (`topics`, max 50) and **Update Existing** (`update_existing`).
+  These apply to every contact in the batch; per-row values stack on top, except
+  that a row-level topic `opt_out` beats a batch-level `opt_in`.
+- **Bulk Subscribe to Topics** and **Bulk Unsubscribe From Topics** operations on
+  *Audience Contact*, covering `POST` and `DELETE /audience/contacts/topics/bulk`
+  over the cartesian product of contact IDs × topic IDs (max 1000 × 50).
+
+### Changed
+- The *Create Many* response now carries `updated`, `error_count`, `errors[]` and
+  `contacts[]` alongside `created` and `already_existed`. The node passes the
+  response through unchanged, so these appear automatically once the API returns
+  them; the README explains how to read them.
+- Creating a contact whose email already exists now fails with HTTP `409` and
+  `error_code: resource_already_exists`, instead of the misleading HTTP `500`
+  `send_error`. Node error messages surface the new code, and the node's
+  *Continue On Fail* path reports it as the API sent it.
+
+### Documentation
+- README: new "Bulk contact import" section covering the two input modes, the
+  `opt_out` precedence rule, and two response traps — a `201` does not mean every
+  row landed (check `error_count` / `errors[]`), and `already_existed` and
+  `updated` overlap by design so they do not sum to the row count.
+
 ## [0.5.0] - 2026-06-03
 
 ### Changed

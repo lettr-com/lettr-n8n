@@ -76,6 +76,7 @@ async function lettrApiRequest(
   itemIndex: number,
   body: IDataObject = {},
   qs: IDataObject = {},
+  extraHeaders: IDataObject = {},
 ): Promise<IDataObject> {
   const options: IHttpRequestOptions = {
     method,
@@ -86,6 +87,7 @@ async function lettrApiRequest(
     qs,
     headers: {
       "User-Agent": `lettr-n8n/${LETTR_VERSION}`,
+      ...extraHeaders,
     },
   };
 
@@ -375,6 +377,10 @@ export class Lettr implements INodeType {
           {
             name: "Domain",
             value: "domain",
+          },
+          {
+            name: "Folder",
+            value: "folder",
           },
           {
             name: "Project",
@@ -1013,6 +1019,14 @@ export class Lettr implements INodeType {
             description: "AMP HTML body",
           },
           {
+            displayName: "Idempotency Key",
+            name: "idempotencyKey",
+            type: "string",
+            default: "",
+            description:
+              "Opaque key making this send safe to retry. Reuse the same value on a retry and the API returns the original result instead of delivering a second email. Derive it from what the send is about - an order ID, an invoice number - rather than from a timestamp or a random value, which defeat the point on a retry. Keys are kept 24 hours and scoped per team and API key. Applies to Send only.",
+          },
+          {
             displayName: "BCC",
             name: "bcc",
             type: "string",
@@ -1479,7 +1493,8 @@ export class Lettr implements INodeType {
             name: "folderId",
             type: "number",
             default: 0,
-            description: "Folder ID to create the template in",
+            description:
+              "Folder ID to create the template in. Use the Folder resource to find one.",
           },
           {
             displayName: "Project ID",
@@ -1487,6 +1502,18 @@ export class Lettr implements INodeType {
             type: "number",
             default: 0,
             description: "Project ID to create the template in",
+          },
+          {
+            displayName: "Purpose",
+            name: "purpose",
+            type: "options",
+            default: "transactional",
+            options: [
+              { name: "Transactional", value: "transactional" },
+              { name: "Campaign", value: "campaign" },
+            ],
+            description:
+              "What the template is for. Transactional (the default) is triggered by one user's action - a receipt, password reset or alert. Campaign is marketing sent to an audience list, and is the only kind a campaign can send. This cannot be changed after creation, so a newsletter created as transactional has to be rebuilt.",
           },
         ],
       },
@@ -1602,6 +1629,39 @@ export class Lettr implements INodeType {
           },
         },
         description: "Filter templates by project ID",
+      },
+      {
+        displayName: "Purpose",
+        name: "templatePurpose",
+        type: "options",
+        default: "",
+        displayOptions: {
+          show: {
+            resource: ["template"],
+            operation: ["getAll"],
+          },
+        },
+        options: [
+          { name: "Any", value: "" },
+          { name: "Transactional", value: "transactional" },
+          { name: "Campaign", value: "campaign" },
+        ],
+        description:
+          "Filter templates by purpose. Campaign returns only the templates a campaign can actually send.",
+      },
+      {
+        displayName: "Folder ID",
+        name: "templateFolderId",
+        type: "number",
+        default: 0,
+        displayOptions: {
+          show: {
+            resource: ["template"],
+            operation: ["getAll"],
+          },
+        },
+        description:
+          "Filter templates by folder ID. A folder outside the resolved project is an error rather than an empty list, so a wrong ID cannot be mistaken for an empty folder. Use the Folder resource to find one.",
       },
       {
         displayName: "Page",
@@ -1893,6 +1953,87 @@ export class Lettr implements INodeType {
             operation: ["getAll"],
           },
         },
+      },
+      {
+        displayName: "Operation",
+        name: "operation",
+        type: "options",
+        noDataExpression: true,
+        default: "getAll",
+        displayOptions: {
+          show: {
+            resource: ["folder"],
+          },
+        },
+        options: [
+          {
+            name: "Get Many",
+            value: "getAll",
+            description: "Get all template folders",
+            action: "Get many folders",
+          },
+        ],
+      },
+      {
+        ...listOperationProperties[0],
+        displayOptions: {
+          show: {
+            resource: ["folder"],
+            operation: ["getAll"],
+          },
+        },
+      },
+      {
+        ...listOperationProperties[1],
+        displayOptions: {
+          show: {
+            resource: ["folder"],
+            operation: ["getAll"],
+            returnAll: [false],
+          },
+        },
+      },
+      {
+        ...listOperationProperties[2],
+        displayOptions: {
+          show: {
+            resource: ["folder"],
+            operation: ["getAll"],
+          },
+        },
+      },
+      {
+        displayName: "Project ID",
+        name: "folderProjectId",
+        type: "number",
+        default: 0,
+        displayOptions: {
+          show: {
+            resource: ["folder"],
+            operation: ["getAll"],
+          },
+        },
+        description:
+          "Filter folders by project ID. Leave at 0 to use the team's default project.",
+      },
+      {
+        displayName: "Purpose",
+        name: "folderPurpose",
+        type: "options",
+        default: "",
+        displayOptions: {
+          show: {
+            resource: ["folder"],
+            operation: ["getAll"],
+          },
+        },
+        options: [
+          { name: "Any", value: "" },
+          { name: "Transactional", value: "transactional" },
+          { name: "Campaign", value: "campaign" },
+        ],
+        description:
+          "Filter folders by purpose. A folder's purpose is separate from its templates' - filing a template in a campaign folder does not make the template a campaign template.",
       },
       {
         displayName: "Operation",
@@ -3312,12 +3453,24 @@ export class Lettr implements INodeType {
               body.scheduled_at = scheduledAt;
             }
 
+            // Only a live send can be replayed. A scheduled transmission is
+            // created once and then cancelled or edited by ID, so a key there
+            // would be silently meaningless.
+            const headers: IDataObject = {};
+            if (operation === "send" && additionalFields.idempotencyKey) {
+              headers["Idempotency-Key"] = String(
+                additionalFields.idempotencyKey,
+              );
+            }
+
             const response = await lettrApiRequest.call(
               this,
               "POST",
               endpoint,
               itemIndex,
               body,
+              {},
+              headers,
             );
 
             returnData.push({
@@ -3660,6 +3813,7 @@ export class Lettr implements INodeType {
           }
           if (additional.projectId) body.project_id = additional.projectId;
           if (additional.folderId) body.folder_id = additional.folderId;
+          if (additional.purpose) body.purpose = additional.purpose;
 
           const response = await lettrApiRequest.call(
             this,
@@ -3815,9 +3969,21 @@ export class Lettr implements INodeType {
             itemIndex,
             1,
           ) as number;
+          const purpose = this.getNodeParameter(
+            "templatePurpose",
+            itemIndex,
+            "",
+          ) as string;
+          const folderId = this.getNodeParameter(
+            "templateFolderId",
+            itemIndex,
+            0,
+          ) as number;
 
           const queryBase: IDataObject = {};
           if (projectId > 0) queryBase.project_id = projectId;
+          if (purpose) queryBase.purpose = purpose;
+          if (folderId > 0) queryBase.folder_id = folderId;
 
           if (!returnAll) {
             const qs: IDataObject = {
@@ -4121,6 +4287,90 @@ export class Lettr implements INodeType {
                 json: entry,
                 pairedItem: itemIndex,
               });
+            }
+          }
+        }
+
+        if (resource === "folder" && operation === "getAll") {
+          const returnAll = this.getNodeParameter(
+            "returnAll",
+            itemIndex,
+          ) as boolean;
+          const limit = this.getNodeParameter("limit", itemIndex, 50) as number;
+          const simplify = this.getNodeParameter(
+            "simplify",
+            itemIndex,
+            true,
+          ) as boolean;
+          const projectId = this.getNodeParameter(
+            "folderProjectId",
+            itemIndex,
+            0,
+          ) as number;
+          const purpose = this.getNodeParameter(
+            "folderPurpose",
+            itemIndex,
+            "",
+          ) as string;
+
+          const queryBase: IDataObject = {};
+          if (projectId > 0) queryBase.project_id = projectId;
+          if (purpose) queryBase.purpose = purpose;
+
+          if (!returnAll) {
+            const qs: IDataObject = {
+              ...queryBase,
+              per_page: limit,
+              page: 1,
+            };
+            const response = await lettrApiRequest.call(
+              this,
+              "GET",
+              "/folders",
+              itemIndex,
+              {},
+              qs,
+            );
+
+            if (!simplify) {
+              returnData.push({ json: response, pairedItem: itemIndex });
+            } else {
+              for (const entry of getResponseList(response, "folders")) {
+                returnData.push({ json: entry, pairedItem: itemIndex });
+              }
+            }
+          } else {
+            const entries: IDataObject[] = [];
+            let page = 1;
+            let hasMore = true;
+
+            while (hasMore) {
+              const qs: IDataObject = { ...queryBase, per_page: 100, page };
+              const response = await lettrApiRequest.call(
+                this,
+                "GET",
+                "/folders",
+                itemIndex,
+                {},
+                qs,
+              );
+              entries.push(...getResponseList(response, "folders"));
+              const pagination = getPagination(response);
+              const currentPage = Number(pagination.current_page ?? page);
+              const lastPage = Number(pagination.last_page ?? currentPage);
+              hasMore = currentPage < lastPage;
+              page = currentPage + 1;
+            }
+
+            if (!simplify) {
+              returnData.push({
+                json: { data: { folders: entries } },
+                pairedItem: itemIndex,
+              });
+            } else {
+              for (const entry of entries) {
+                returnData.push({ json: entry, pairedItem: itemIndex });
+              }
             }
           }
         }

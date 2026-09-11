@@ -5,6 +5,47 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-11
+
+Brings the node level with the SDKs: template purpose, the folders endpoint,
+preparation status, folder filtering and idempotent sends (TPL-2459, TPL-2539).
+Everything here is additive — existing workflows keep working untouched and send
+the exact same payloads.
+
+### Added
+
+- **Purpose on template create** — `transactional` (the default) or `campaign`,
+  under Additional Fields. This is the one that matters: a campaign can only
+  send a template whose purpose is `campaign`, and the purpose cannot be changed
+  after creation, so a newsletter built with the default had to be recreated
+  from scratch. The field description explains the split rather than naming the
+  enum, because nothing else in the UI tells you a campaign needs a marketing
+  template.
+- **Folder resource** with Get Many, filterable by project and purpose. Nothing
+  else in the API returns a folder ID, so before this the options were to leave
+  Folder ID empty and accept whichever folder the API picked, or to hardcode an
+  integer read out of an app URL.
+- **Purpose and Folder ID filters on template Get Many.** Filtering by folder
+  turns reconciling a bulk import into one call rather than a Get per template,
+  each dragging the full HTML payload against the same rate limit. A folder
+  outside the resolved project is an error rather than an empty list, so a wrong
+  ID cannot be mistaken for an empty folder.
+- **Idempotency Key on Email → Send.** Reuse the same value on a retry and the
+  API returns the original result instead of delivering a second email — which
+  is exactly the gap an n8n retry after a timeout falls into, with no way of
+  knowing whether the first attempt landed. The key is yours; the node never
+  invents one, since a generated key would differ on the retry and defeat the
+  mechanism.
+
+### Notes
+
+- `preparation_status` on template responses needs no node change — responses
+  pass through untouched — but it is now documented. An imported template
+  renders asynchronously, so it can exist before it is sendable.
+- The Idempotency Key field is shared with Schedule in the UI but applies only
+  to Send. A scheduled transmission is created once and then cancelled or edited
+  by ID, so there is nothing to replay.
+
 ## [0.6.0] - 2026-08-14
 
 Covers the reworked bulk contact import (TPL-2105) and the duplicate-create fix.

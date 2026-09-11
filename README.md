@@ -22,6 +22,8 @@ npm run build
 - **Domain**
   - Get Many
 - **Template**
+  - Get Many, Get, Create, Update, Delete, Get HTML, Get Merge Tags
+- **Folder**
   - Get Many
 - **Webhook**
   - Get Many
@@ -37,6 +39,34 @@ npm run build
   - Get Many, Get, Create, Update, Delete
 - **Audience Segment**
   - Get Many, Get, Create, Update, Delete
+
+## Template purpose
+
+A template is either **transactional** (the default — receipts, password resets, alerts) or **campaign** (marketing sent to an audience list). A campaign can only send a template whose purpose is `campaign`, and **the purpose cannot be changed after creation** — a newsletter created with the default has to be rebuilt.
+
+Set it under *Additional Fields → Purpose* when creating a template. Template *Get Many* can filter by it, so `purpose = Campaign` lists exactly the templates a campaign is able to send.
+
+## Folders
+
+The **Folder** resource lists the folders templates are filed into, with each folder's purpose and template count. It is the only way to discover a folder ID: without it the choice is to leave *Folder ID* empty and accept whichever folder the API picks, or to hardcode an integer read out of an app URL.
+
+A folder's purpose is independent of its templates'. Filing a template in a campaign folder does **not** make the template a campaign template.
+
+Template *Get Many* accepts a **Folder ID** filter, which turns reconciling a bulk import into one call rather than a *Get* per template. A folder outside the resolved project is an error rather than an empty list, so a wrong ID cannot be mistaken for an empty folder.
+
+## Preparation status
+
+Imported templates render asynchronously, so a template can exist before it is sendable. Template responses carry `preparation_status` — `pending`, `ready` or `failed` — and the node passes it through untouched.
+
+After an *update* the previous render keeps serving until the new one settles, so a `pending` template still sends; it just isn't serving the new content yet.
+
+## Idempotent sends
+
+*Email → Send → Additional Fields → Idempotency Key* makes a send safe to retry. Reuse the same value and the API returns the original result instead of delivering a second email.
+
+This matters in a workflow: an n8n retry after a timeout has no way of knowing whether the first attempt actually landed. Derive the key from what the send is about — an order ID, an invoice number — rather than from a timestamp or random value, which defeat the point on a retry. Keys are kept 24 hours and scoped per team and API key.
+
+The field is shared with *Schedule* in the UI but only applies to *Send*: a scheduled transmission is created once and then cancelled or edited by ID, so there is nothing to replay.
 
 ## Bulk contact import
 

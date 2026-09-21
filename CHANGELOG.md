@@ -5,6 +5,47 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Follows the API's scheduled-email rework (TPL-2621). Lettr used to hand a
+scheduled email straight to SparkPost, which made the provider's transmission
+the real object; SparkPost then retired per-transmission GET and DELETE, so
+Lettr now holds the schedule itself and only hands the email over when it is
+due. That moves the identity of a scheduled email, which is what most of this
+release is about.
+
+### Added
+
+- **Email → Get Many Scheduled**, with an optional status filter over the five
+  states (`scheduled`, `sending`, `sent`, `cancelled`, `failed`) and the usual
+  Return All / Limit / Simplify controls. Until now a scheduled email could only
+  be fetched by an ID the workflow had already captured, so anything scheduled
+  by another system — or by a run whose output was not stored — was invisible
+  from n8n. Page-based like the other list operations, capped at the API's
+  `per_page` maximum of 100 per request.
+
+### Changed
+
+- **"Transmission ID" is now "Scheduled Email ID"** on Get Scheduled and Cancel
+  Scheduled. The value to paste is Lettr's own `request_id` (prefixed `sch_`);
+  the provider's `transmission_id` is a *different* field that stays `null`
+  until the email is actually sent and is the one that turns up on webhook
+  events. The old label pointed at the wrong field, and on a still-scheduled
+  email that field is empty. **The internal parameter name is deliberately left
+  as `transmissionId`** — it is persisted in every saved workflow, so renaming
+  it would blank the field on upgrade.
+- **The scheduling window is 5 minutes to 30 days**, up from 3 days. Only the
+  field description changed; the API does the enforcing.
+- Cancel Scheduled now emits the cancelled email, with `state` flipped to
+  `cancelled`, where the endpoint used to answer with no content. This needed no
+  node change — the response has always been passed through as-is — but it is
+  worth knowing that the operation now produces something to branch on.
+
+### Fixed
+
+- The `User-Agent` version constant was left at `0.6.0` when 0.7.0 shipped, so
+  every request has been under-reporting the node version. Back in sync.
+
 ## [0.7.0] - 2026-09-11
 
 Brings the node level with the SDKs: template purpose, the folders endpoint,

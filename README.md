@@ -17,16 +17,18 @@ npm run build
 ## Supported resources and operations
 
 - **Email**
-  - Send
-  - Get
+  - Send, Get, Get Events
+  - Schedule, Get Scheduled, Get Many Scheduled, Cancel Scheduled
 - **Domain**
+  - Get Many, Get, Create, Delete, Verify
+- **Project**
   - Get Many
 - **Template**
   - Get Many, Get, Create, Update, Delete, Get HTML, Get Merge Tags
 - **Folder**
   - Get Many
 - **Webhook**
-  - Get Many
+  - Get Many, Get, Create, Update, Delete
 - **Campaign**
   - Get Many, Get, Get Events, Send, Schedule, Unschedule
 - **Audience Contact**
@@ -60,13 +62,38 @@ Imported templates render asynchronously, so a template can exist before it is s
 
 After an *update* the previous render keeps serving until the new one settles, so a `pending` template still sends; it just isn't serving the new content yet.
 
+## Scheduled emails
+
+Lettr owns the schedule and only hands the email to the sending provider when it
+is due. Two consequences shape how the node is wired:
+
+- **The ID you keep is `request_id`**, prefixed `sch_`. That is what *Get
+  Scheduled* and *Cancel Scheduled* take, under the field labelled **Scheduled
+  Email ID**. Its internal parameter name is still `transmissionId` for
+  backwards compatibility with saved workflows — don't be alarmed by it in
+  exported JSON.
+- **`transmission_id` is the provider's ID and is `null` until the email is
+  actually sent.** It is the value that appears on webhook events, so it is what
+  you correlate a webhook against — but only after the fact. Reaching for it to
+  cancel something will get you `null`.
+
+`state` is one of `scheduled`, `sending`, `sent`, `cancelled` or `failed`.
+*Cancel Scheduled* returns the cancelled email with `state` already flipped to
+`cancelled`, so a downstream node can assert on it without a follow-up read.
+
+*Get Many Scheduled* lists them, optionally filtered by state. Without it the
+only way to find a scheduled email is an ID the workflow already captured, which
+leaves anything scheduled elsewhere unreachable from n8n.
+
+The window is **5 minutes to 30 days** ahead, enforced by the API.
+
 ## Idempotent sends
 
 *Email → Send → Additional Fields → Idempotency Key* makes a send safe to retry. Reuse the same value and the API returns the original result instead of delivering a second email.
 
 This matters in a workflow: an n8n retry after a timeout has no way of knowing whether the first attempt actually landed. Derive the key from what the send is about — an order ID, an invoice number — rather than from a timestamp or random value, which defeat the point on a retry. Keys are kept 24 hours and scoped per team and API key.
 
-The field is shared with *Schedule* in the UI but only applies to *Send*: a scheduled transmission is created once and then cancelled or edited by ID, so there is nothing to replay.
+The field is shared with *Schedule* in the UI but only applies to *Send*: a scheduled email is created once and then cancelled by ID, so there is nothing to replay.
 
 ## Bulk contact import
 

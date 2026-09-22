@@ -18,7 +18,7 @@ const LETTR_BASE_URL = "https://app.lettr.com/api";
  * n8n Cloud forbids community nodes from accessing `fs`/`path`/`__dirname` at
  * runtime. Keep this in sync with the `version` field in package.json.
  */
-const LETTR_VERSION = "0.6.0";
+const LETTR_VERSION = "0.7.0";
 
 function splitRecipientList(value: string): string[] {
   return value
@@ -435,7 +435,7 @@ export class Lettr implements INodeType {
           {
             name: "Cancel Scheduled",
             value: "cancelScheduled",
-            description: "Cancel a scheduled email transmission",
+            description: "Cancel a scheduled email before it is sent",
             action: "Cancel a scheduled email",
           },
           {
@@ -452,9 +452,15 @@ export class Lettr implements INodeType {
             action: "Get email events",
           },
           {
+            name: "Get Many Scheduled",
+            value: "getAllScheduled",
+            description: "Get many scheduled emails",
+            action: "Get many scheduled emails",
+          },
+          {
             name: "Get Scheduled",
             value: "getScheduled",
-            description: "Get a scheduled email transmission by ID",
+            description: "Get a scheduled email by ID",
             action: "Get a scheduled email",
           },
           {
@@ -1144,21 +1150,77 @@ export class Lettr implements INodeType {
           },
         },
         description:
-          "When to send the email (UTC). Must be at least 5 minutes in the future and within 3 days",
+          "When to send the email (UTC). Must be at least 5 minutes in the future and within 30 days",
       },
+      // Lettr now owns the schedule, so a scheduled email is addressed by its
+      // own `sch_` request ID and no longer by the provider's transmission ID.
+      // The internal `name` still says `transmissionId` because it is persisted
+      // in every workflow saved before that change — renaming it would silently
+      // blank the field for those users. Only the labels were corrected.
       {
-        displayName: "Transmission ID",
+        displayName: "Scheduled Email ID",
         name: "transmissionId",
         type: "string",
         required: true,
         default: "",
+        placeholder: "sch_01M322YMWVCZ4RNYXHMSSMDTM1",
         displayOptions: {
           show: {
             resource: ["email"],
             operation: ["getScheduled", "cancelScheduled"],
           },
         },
-        description: "ID returned when the email was scheduled",
+        description:
+          'The "request_id" returned when the email was scheduled, prefixed with "sch_". This is not the "transmission_id" field, which holds the provider ID used on webhook events and stays null until the email is actually sent.',
+      },
+      {
+        displayName: "Status",
+        name: "scheduledStatus",
+        type: "options",
+        default: "",
+        displayOptions: {
+          show: {
+            resource: ["email"],
+            operation: ["getAllScheduled"],
+          },
+        },
+        options: [
+          { name: "Any", value: "" },
+          { name: "Scheduled", value: "scheduled" },
+          { name: "Sending", value: "sending" },
+          { name: "Sent", value: "sent" },
+          { name: "Cancelled", value: "cancelled" },
+          { name: "Failed", value: "failed" },
+        ],
+        description: "Filter scheduled emails by state",
+      },
+      {
+        ...listOperationProperties[0],
+        displayOptions: {
+          show: {
+            resource: ["email"],
+            operation: ["getAllScheduled"],
+          },
+        },
+      },
+      {
+        ...listOperationProperties[1],
+        displayOptions: {
+          show: {
+            resource: ["email"],
+            operation: ["getAllScheduled"],
+            returnAll: [false],
+          },
+        },
+      },
+      {
+        ...listOperationProperties[2],
+        displayOptions: {
+          show: {
+            resource: ["email"],
+            operation: ["getAllScheduled"],
+          },
+        },
       },
       {
         ...listOperationProperties[0],
@@ -3497,6 +3559,45 @@ export class Lettr implements INodeType {
               json: response,
               pairedItem: itemIndex,
             });
+          }
+
+          if (operation === "getAllScheduled") {
+            const returnAll = this.getNodeParameter(
+              "returnAll",
+              itemIndex,
+            ) as boolean;
+            const limit = this.getNodeParameter(
+              "limit",
+              itemIndex,
+              50,
+            ) as number;
+            const simplify = this.getNodeParameter(
+              "simplify",
+              itemIndex,
+              true,
+            ) as boolean;
+            const status = this.getNodeParameter(
+              "scheduledStatus",
+              itemIndex,
+              "",
+            ) as string;
+
+            const queryBase: IDataObject = {};
+            if (status) queryBase.status = status;
+
+            returnData.push(
+              ...(await paginatedGetMany.call(
+                this,
+                "/emails/scheduled",
+                "scheduled_emails",
+                itemIndex,
+                queryBase,
+                returnAll,
+                Math.min(limit, 100),
+                simplify,
+                1,
+              )),
+            );
           }
 
           if (operation === "getEvents") {

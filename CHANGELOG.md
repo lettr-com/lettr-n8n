@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-22
+
 Follows the API's scheduled-email rework (TPL-2621). Lettr used to hand a
 scheduled email straight to SparkPost, which made the provider's transmission
 the real object; SparkPost then retired per-transmission GET and DELETE, so

@@ -18,7 +18,7 @@ const LETTR_BASE_URL = "https://app.lettr.com/api";
  * n8n Cloud forbids community nodes from accessing `fs`/`path`/`__dirname` at
  * runtime. Keep this in sync with the `version` field in package.json.
  */
-const LETTR_VERSION = "0.7.0";
+const LETTR_VERSION = "0.8.0";
 
 function splitRecipientList(value: string): string[] {
   return value
